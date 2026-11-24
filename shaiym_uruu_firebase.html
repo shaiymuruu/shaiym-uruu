@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ky">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ШАЙЫМ УРУУСУ</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0}.top{background:#173d73;color:white;padding:18px 16px}
+h1{font-size:23px;margin:0 0 5px}.sub{font-size:13px;opacity:.9}
+main{max-width:760px;margin:auto;padding:14px}.panel{background:white;border-radius:14px;padding:15px;margin:12px 0;box-shadow:0 2px 10px #17203312}
+input,select,textarea,button{font:inherit;width:100%;padding:11px;border:1px solid #ccd3df;border-radius:9px;margin:5px 0}
+textarea{min-height:75px}button{border:0;background:#1d5da8;color:white;font-weight:650;cursor:pointer}
+button.secondary{background:#e8eef7;color:#173d73}button.danger{background:#a62c36}
+.row{display:flex;gap:8px}.row>*{flex:1}.person{border:1px solid #e1e6ef;border-radius:10px;padding:11px;margin:7px 0;background:#fff}
+.person button{margin:0;text-align:left}.muted{color:#647084;font-size:13px}.hidden{display:none!important}
+.tag{display:inline-block;background:#edf3fb;color:#234b7a;padding:3px 8px;border-radius:20px;font-size:12px}
+#notice{white-space:pre-wrap;color:#9a2730;font-size:14px}
+</style>
+</head>
+<body>
+<header class="top"><h1>ШАЙЫМ УРУУСУ</h1><div class="sub">Урук-тууган тарыхы жана санжырасы</div></header>
+<main>
+<section class="panel" id="authPanel">
+<h3>Администратор кирүүсү</h3>
+<p class="muted">Маалымат кошуу же өзгөртүү үчүн администратор өзүнүн электрондук почтасы жана сырсөзү менен кирет. Көрүү үчүн кирүү талап кылынбайт.</p>
+<input id="email" type="email" placeholder="Электрондук почта">
+<input id="password" type="password" placeholder="Сырсөз">
+<div class="row"><button id="loginBtn">Кирүү</button><button class="secondary" id="logoutBtn">Чыгуy</button></div>
+<div class="muted" id="authState">Көрүү режими</div>
+</section>
+<section class="panel">
+<div class="row"><div><h3 style="margin:4px 0">Санжыра</h3><div class="muted">Адамдын атын басып, балдарын көрүңүз.</div></div><button class="secondary" id="refreshBtn" style="max-width:120px">Жаңыртуу</button></div>
+<div id="tree"><p class="muted">Маалымат жүктөлүүдө…</p></div>
+</section>
+<section class="panel hidden" id="editor">
+<h3 id="formTitle">Жаңы адам кошуу</h3>
+<input id="personId" type="hidden">
+<label>Аты-жөнү</label><input id="fullName" placeholder="Мисалы: Баймурат">
+<div class="row"><div><label>Жынысы</label><select id="gender"><option value="male">Уул ♂</option><option value="female">Кыз ♀</option></select></div>
+<div><label>Туулган жылы</label><input id="birthYear" placeholder="Мисалы: 1980"></div></div>
+<label>Туулган жери</label><input id="birthPlace" placeholder="Айыл, район">
+<label>Абалы</label><select id="lifeStatus"><option value="alive">Тирүү</option><option value="deceased">Каза болгон</option></select>
+<label>Сүрөттүн шилтемеси (кийин кошсо болот)</label><input id="photoUrl" type="url" placeholder="https://...">
+<label>Кыскача өмүр баяны</label><textarea id="bio" placeholder="Кааласаңыз толтуруңуз"></textarea>
+<input id="parentId" type="hidden">
+<div class="row"><button id="saveBtn">Сактоо</button><button class="secondary" id="cancelBtn">Жабуу</button></div>
+<div id="deleteWrap"><button class="danger" id="deleteBtn">Өчүрүү</button></div>
+</section>
+<div id="notice"></div>
+<p class="muted">Эскертүү: тиркеме Firebase Firestore менен иштейт. Маалыматтарды ким өзгөртө алары Firebase коопсуздук эрежелери аркылуу чектелет.</p>
+</main>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD3AxQUX2kY6KzF_QmVAUe7GzKc1sgmubg",
+  authDomain: "shaiym-uruu.firebaseapp.com",
+  projectId: "shaiym-uruu",
+  storageBucket: "shaiym-uruu.firebasestorage.app",
+  messagingSenderId: "13221798453",
+  appId: "1:13221798453:web:7db538f974251d92ad077c"
+};
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app);
+const $=id=>document.getElementById(id);
+let people=[], currentUser=null, selectedParent=null;
+const roots=[["shaiym","Шайым"],["baymat","Баймат"],["melke","Мелке"],["bokara","Бокара"],["bolokozho","Болокожо"]];
+function msg(t){$("notice").textContent=t}
+function esc(s=""){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+async function load(){
+ try{
+  const snap=await getDocs(collection(db,"people"));
+  people=snap.docs.map(d=>({id:d.id,...d.data()}));
+  render();
+  msg("");
+ }catch(e){msg("Маалымат жүктөлгөн жок: "+e.message)}
+}
+function render(){
+ const host=$("tree");host.innerHTML="";
+ const rootsInDb=roots.map(([id,name])=>people.find(p=>p.id===id)||{id,name,parentId:null,gender:"male"});
+ const seen=new Set();
+ function branch(p,depth=0){
+  if(seen.has(p.id))return;seen.add(p.id);
+  const kids=people.filter(x=>x.parentId===p.id).sort((a,b)=>(a.fullName||a.name||"").localeCompare(b.fullName||b.name||"","ky"));
+  const name=p.fullName||p.name||"Аты жазыла элек";
+  const div=document.createElement("div");div.className="person";div.style.marginLeft=Math.min(depth*13,65)+"px";
+  const b=document.createElement("button");b.className="secondary";b.innerHTML=(p.gender==="female"?"♀ ":"♂ ")+esc(name)+"  <span class='tag'>"+kids.length+" бала</span>";
+  b.onclick=()=>{selectedParent=p.id;showProfile(p)};
+  div.appendChild(b);host.appendChild(div);
+  kids.forEach(k=>branch(k,depth+1));
+ }
+ rootsInDb.forEach(p=>branch(p));
+ if(!people.length)host.insertAdjacentHTML("beforeend","<p class='muted'>Азырынча адамдардын толук тизмеси жок. Администратор киргенден кийин кошо алат.</p>");
+}
+function showProfile(p){
+ const name=p.fullName||p.name||"";
+ msg([name,p.birthPlace||"",p.birthYear?"Туулган жылы: "+p.birthYear:"",p.lifeStatus==="deceased"?"Каза болгон":"",p.bio||""].filter(Boolean).join("\n"));
+ if(currentUser){$("editor").classList.remove("hidden");$("formTitle").textContent="Маалыматты өзгөртүү";$("personId").value=p.id;$("parentId").value=p.parentId||"";$("fullName").value=name;$("gender").value=p.gender||"male";$("birthYear").value=p.birthYear||"";$("birthPlace").value=p.birthPlace||"";$("lifeStatus").value=p.lifeStatus||"alive";$("photoUrl").value=p.photoUrl||"";$("bio").value=p.bio||"";$("deleteWrap").classList.remove("hidden")}
+}
+function newPerson(parentId){
+ if(!currentUser)return;
+ $("editor").classList.remove("hidden");$("formTitle").textContent="Жаңы адам кошуу";
+ ["personId","fullName","birthYear","birthPlace","photoUrl","bio"].forEach(x=>$(x).value="");
+ $("parentId").value=parentId||"";$("gender").value="male";$("lifeStatus").value="alive";$("deleteWrap").classList.add("hidden");
+}
+$("loginBtn").onclick=async()=>{try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);msg("")}catch(e){msg("Кирүү ишке ашкан жок: "+e.message)}};
+$("logoutBtn").onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{currentUser=u;$("authState").textContent=u?"Кирди: "+u.email:"Көрүү режими";$("editor").classList.add("hidden");if(u){$("tree").insertAdjacentHTML("afterbegin","<button id='addRoot' style='margin-bottom:8px'>Шайымга адам кошуу</button>");$("addRoot").onclick=()=>newPerson("shaiym")}});
+$("refreshBtn").onclick=load;
+$("cancelBtn").onclick=()=>$("editor").classList.add("hidden");
+$("saveBtn").onclick=async()=>{
+ if(!currentUser)return msg("Администратор катары кириңиз.");
+ const id=$("personId").value||("p_"+Date.now());
+ const data={fullName:$("fullName").value.trim(),gender:$("gender").value,birthYear:$("birthYear").value.trim(),birthPlace:$("birthPlace").value.trim(),lifeStatus:$("lifeStatus").value,photoUrl:$("photoUrl").value.trim(),bio:$("bio").value.trim(),parentId:$("parentId").value||null,updatedAt:new Date().toISOString()};
+ if(!data.fullName)return msg("Аты-жөнүн жазыңыз.");
+ try{await setDoc(doc(db,"people",id),data,{merge:true});$("editor").classList.add("hidden");await load();msg("Сакталды.")}catch(e){msg("Сакталган жок. Firebase эрежелери администраторго уруксат бериши керек: "+e.message)}
+};
+$("deleteBtn").onclick=async()=>{
+ const id=$("personId").value;if(!id||!currentUser)return;
+ if(!confirm("Бул адамдын маалыматын өчүрөсүзбү?"))return;
+ try{await deleteDoc(doc(db,"people",id));$("editor").classList.add("hidden");await load();msg("Өчүрүлдү.")}catch(e){msg("Өчүрүлгөн жок: "+e.message)}
+};
+load();
+</script>
+</body></html>
