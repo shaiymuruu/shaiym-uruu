@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ky">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ШАЙЫМ УРУУСУ</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#202534;background:#f5f7fb}
+body{margin:0;padding:16px}.wrap{max-width:760px;margin:auto}
+h1{text-align:center;color:#183b68;font-size:25px}
+.panel,.person{background:white;border:1px solid #dce3ed;border-radius:14px;padding:14px;margin:10px 0;box-shadow:0 2px 8px #14213d0c}
+button{border:0;border-radius:9px;padding:10px 13px;background:#1d5b9e;color:white;font-weight:600;margin:4px 3px 4px 0}
+button.secondary{background:#e8eef6;color:#20364f}button.danger{background:#a33b3b}
+input,select,textarea{box-sizing:border-box;width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:8px;margin:5px 0 10px;font:inherit}
+.person{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.person strong{font-size:17px}.children{margin-left:20px;border-left:2px solid #d9e3ef;padding-left:10px}
+.small{font-size:13px;color:#64748b}.hidden{display:none}
+#status{white-space:pre-wrap;color:#9a3412}
+</style>
+</head>
+<body><div class="wrap">
+<h1>ШАЙЫМ УРУУСУ</h1>
+<div class="panel">
+  <div id="auth">
+    <b>Администратор кирүүсү</b>
+    <input id="email" type="email" placeholder="Электрондук почта">
+    <input id="password" type="password" placeholder="Сыр сөз">
+    <button id="login">Кирүү</button><button id="logout" class="secondary hidden">Чыгуу</button>
+    <div class="small">Маалыматты көрүү ачык. Кошуу жана өзгөртүү администраторлорго гана уруксат.</div>
+  </div>
+  <div id="status"></div>
+</div>
+<div id="tree" class="panel">Маалымат жүктөлүүдө…</div>
+<div id="editor" class="panel hidden">
+  <b id="formTitle">Адам кошуу</b>
+  <input id="fullName" placeholder="Аты-жөнү">
+  <select id="gender"><option value="male">♂ Уул</option><option value="female">♀ Кыз</option></select>
+  <input id="birthYear" placeholder="Туулган жылы">
+  <input id="birthPlace" placeholder="Туулган жери">
+  <select id="life"><option value="alive">Тирүү</option><option value="deceased">Каза болгон</option></select>
+  <input id="photo" placeholder="Сүрөттүн шилтемеси (кааласаңыз)">
+  <textarea id="bio" placeholder="Кыскача маалымат (кааласаңыз)"></textarea>
+  <button id="save">Сактоо</button><button id="cancel" class="secondary">Жабуу</button>
+</div>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, getDocs, addDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD3AxQUX2K6YzF_QmVAUe7GzKc1sgmubg",
+  authDomain: "shaiym-uruu.firebaseapp.com",
+  projectId: "shaiym-uruu",
+  storageBucket: "shaiym-uruu.firebasestorage.app",
+  messagingSenderId: "13221798453",
+  appId: "1:13221798453:web:7db538f974251d92ad077c"
+};
+const app=initializeApp(firebaseConfig), db=getFirestore(app), auth=getAuth(app);
+const $=id=>document.getElementById(id);
+let people=[], user=null, parentForAdd=null, editing=null;
+const roots=[
+  {id:"shaiym",name:"Шайым"},
+  {id:"baymat",name:"Баймат"},
+  {id:"melke",name:"Мелке"},
+  {id:"bokara",name:"Бокара"},
+  {id:"bolokozho",name:"Болокожо"}
+];
+function msg(s){$("status").textContent=s}
+async function load(){
+  try{const snap=await getDocs(collection(db,"people"));people=snap.docs.map(d=>({id:d.id,...d.data()}));render()}
+  catch(e){msg("Маалыматты окуу мүмкүн болгон жок: "+e.message);$("tree").textContent="Firestore Rules жана Database жөндөөлөрүн текшериңиз."}
+}
+function kids(id){return people.filter(p=>p.parentId===id)}
+function personName(p){return p.fullName||p.name||"Аты көрсөтүлгөн эмес"}
+function renderPerson(p,depth=0){
+ const div=document.createElement("div");div.className="person";
+ const label=document.createElement("div");
+ const gender=p.gender==="female"?"♀":"♂";
+ label.innerHTML=`<strong>${gender} ${escapeHtml(personName(p))}</strong><div class="small">${escapeHtml(p.birthYear||"")} ${escapeHtml(p.birthPlace||"")}</div>`;
+ div.append(label);
+ if(user){const actions=document.createElement("div");
+  const add=document.createElement("button");add.textContent="＋";add.title="Бала кошуу";add.onclick=()=>openForm(p.id);actions.append(add);
+  const edit=document.createElement("button");edit.textContent="Өзгөртүү";edit.className="secondary";edit.onclick=()=>openEdit(p);actions.append(edit);
+  const del=document.createElement("button");del.textContent="Өчүрүү";del.className="danger";del.onclick=()=>removePerson(p);actions.append(del);
+  div.append(actions);
+ }
+ const wrap=document.createElement("div");wrap.append(div);
+ const childWrap=document.createElement("div");childWrap.className="children";
+ kids(p.id).forEach(c=>childWrap.append(renderPerson(c)));
+ if(childWrap.childNodes.length)wrap.append(childWrap);
+ return wrap;
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function render(){
+ const tree=$("tree");tree.innerHTML="";
+ roots.forEach(r=>{
+  let p=people.find(x=>x.id===r.id);
+  if(!p)p={...r,fullName:r.name,parentId:null,gender:"male",_seed:true};
+  tree.append(renderPerson(p));
+ });
+ const extra=people.filter(p=>!p.parentId&&!roots.some(r=>r.id===p.id));
+ extra.forEach(p=>tree.append(renderPerson(p)));
+ if(!user){const note=document.createElement("p");note.className="small";note.textContent="Кирген администратор гана жаңы адам кошо алат.";tree.append(note)}
+}
+function openForm(parentId){parentForAdd=parentId;editing=null;$("formTitle").textContent="Уул же кыз кошуу";clearForm();$("editor").classList.remove("hidden")}
+function openEdit(p){editing=p;parentForAdd=p.parentId||null;$("formTitle").textContent="Маалыматты өзгөртүү";$("fullName").value=personName(p);$("gender").value=p.gender||"male";$("birthYear").value=p.birthYear||"";$("birthPlace").value=p.birthPlace||"";$("life").value=p.life||"alive";$("photo").value=p.photo||"";$("bio").value=p.bio||"";$("editor").classList.remove("hidden")}
+function clearForm(){["fullName","birthYear","birthPlace","photo","bio"].forEach(id=>$(id).value="");$("gender").value="male";$("life").value="alive"}
+$("cancel").onclick=()=>$("editor").classList.add("hidden");
+$("save").onclick=async()=>{
+ if(!user){msg("Администратор болуп кириңиз.");return}
+ const fullName=$("fullName").value.trim();if(!fullName){msg("Аты-жөнүн жазыңыз.");return}
+ const data={fullName,gender:$("gender").value,birthYear:$("birthYear").value.trim(),birthPlace:$("birthPlace").value.trim(),life:$("life").value,photo:$("photo").value.trim(),bio:$("bio").value.trim(),parentId:parentForAdd||null};
+ try{if(editing)await updateDoc(doc(db,"people",editing.id),data);else await addDoc(collection(db,"people"),data);$("editor").classList.add("hidden");msg("Сакталды.");await load()}
+ catch(e){msg("Сактоо мүмкүн болгон жок: "+e.message)}
+};
+async function removePerson(p){if(!confirm(personName(p)+" өчүрүлсүнбү?"))return;try{await deleteDoc(doc(db,"people",p.id));await load()}catch(e){msg(e.message)}}
+$("login").onclick=async()=>{try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);msg("Кирдиңиз.")}catch(e){msg("Кирүү ишке ашкан жок: "+e.message)}};
+$("logout").onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{user=u;$("login").classList.toggle("hidden",!!u);$("logout").classList.toggle("hidden",!u);render()});
+load();
+</script>
+</body></html>
