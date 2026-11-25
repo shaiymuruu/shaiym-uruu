@@ -25,7 +25,7 @@ input,select,textarea{box-sizing:border-box;width:100%;padding:11px;border:1px s
     <b>Администратор кирүүсү</b>
     <input id="email" type="email" placeholder="Электрондук почта">
     <input id="password" type="password" placeholder="Сыр сөз">
-    <button id="login">Кирүү</button><button id="logout" class="secondary hidden">Чыгуу</button>
+    <button id="login">Кирүү</button><button id="forgot" class="secondary">Сырсөздү унуттуңузбу?</button><button id="logout" class="secondary hidden">Чыгуу</button>
     <div class="small">Маалыматты көрүү ачык. Кошуу жана өзгөртүү администраторлорго гана уруксат.</div>
   </div>
   <div id="status"></div>
@@ -116,6 +116,7 @@ $("save").onclick=async()=>{
 };
 async function removePerson(p){if(!confirm(personName(p)+" өчүрүлсүнбү?"))return;try{await deleteDoc(doc(db,"people",p.id));await load()}catch(e){msg(e.message)}}
 $("login").onclick=async()=>{try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);msg("Кирдиңиз.")}catch(e){msg("Кирүү ишке ашкан жок: "+e.message)}};
+$("forgot").onclick=async()=>{const email=$("email").value.trim();if(!email){msg("Алгач электрондук почтаңызды жазыңыз.");$("email").focus();return}try{await sendPasswordResetEmail(auth,email);msg("Сырсөздү жаңыртуу шилтемеси почтаңызга жөнөтүлдү. Кирүүчү каттарды жана Спам папкасын текшериңиз.")}catch(e){msg("Кат жөнөтүлгөн жок. Почтаны туура жазганыңызды текшериңиз.")}};
 $("logout").onclick=()=>signOut(auth);
 onAuthStateChanged(auth,u=>{user=u;$("login").classList.toggle("hidden",!!u);$("logout").classList.toggle("hidden",!u);render()});
 load();
